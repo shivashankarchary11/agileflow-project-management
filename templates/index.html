@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AgileFlow — Team Project Manager</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">A</span><span>AgileFlow</span></div>
+  <div class="top-right"><span class="live-dot"></span> Workspace overview &nbsp; · &nbsp; {{ user_name }} · {{ user_role }} &nbsp; <button class="small-btn" onclick="logout()">Log out</button></div>
+</header>
+<main class="layout">
+  <aside class="sidebar">
+    <p class="eyebrow">WORKSPACE</p><button class="nav active">▦ &nbsp; Projects</button>
+    <button class="nav" onclick="generateReport()">↗ &nbsp; Generate report</button>
+    <div class="side-note"><strong>Small teams, clear progress.</strong><p>Organize work from project to story to task.</p></div>
+  </aside>
+  <section class="content">
+    <div class="page-heading">
+      <div><p class="eyebrow">OVERVIEW</p><h1>Projects</h1><p class="muted">Plan work, track progress, and keep your team aligned.</p></div>
+      <button id="newProjectBtn" class="primary" onclick="openProjectModal()">＋ New project</button>
+    </div>
+    <section class="stats">
+      <div class="stat-card"><span class="stat-label">Total projects</span><strong id="projectCount">0</strong><span class="stat-foot">In this workspace</span></div>
+      <div class="stat-card"><span class="stat-label">User stories</span><strong id="storyCount">0</strong><span class="stat-foot">Across all projects</span></div>
+      <div class="stat-card"><span class="stat-label">Tasks completed</span><strong id="completedCount">0</strong><span class="stat-foot">Marked as done</span></div>
+      <div class="stat-card"><span class="stat-label">Overall progress</span><strong id="progress">0%</strong><span class="stat-foot">Completed tasks</span></div>
+    </section>
+    <div class="section-heading"><div><h2>Your projects</h2><p class="muted">Select a project to view its user stories and tasks.</p></div><input id="search" placeholder="Search projects…" oninput="renderProjects()"></div>
+    <div id="projectGrid" class="project-grid"></div>
+    <section id="detail" class="detail hidden"></section>
+    <div id="notice" class="notice hidden"></div>
+  </section>
+</main>
+<div id="modal" class="modal hidden"><div class="modal-card"><div class="modal-head"><h2 id="modalTitle">New project</h2><button class="icon-btn" onclick="closeModal()">×</button></div>
+  <form id="projectForm"><label>Project name<input id="pName" required maxlength="120" placeholder="e.g. Website redesign"></label>
+  <label>Description<textarea id="pDescription" rows="3" placeholder="What is this project about?"></textarea></label>
+  <div class="form-row"><label>Status<select id="pStatus"><option>Active</option><option>On Hold</option><option>Completed</option></select></label><label>Deadline<input id="pDeadline" type="date"></label></div>
+  <button class="primary full" type="submit">Save project</button></form></div></div>
+
+<div id="entryModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="entryModalTitle">
+  <div class="modal-card">
+    <div class="modal-head">
+      <div><h2 id="entryModalTitle">Add item</h2><p id="entryModalHint" class="muted"></p></div>
+      <button class="icon-btn" type="button" onclick="closeEntryModal()" aria-label="Close">×</button>
+    </div>
+    <form id="entryForm">
+      <div id="entryFields"></div>
+      <div class="modal-actions">
+        <button class="small-btn" type="button" onclick="closeEntryModal()">Cancel</button>
+        <button class="primary" id="entrySubmit" type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+</body></html>
