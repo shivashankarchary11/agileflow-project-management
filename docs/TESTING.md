@@ -1,144 +1,153 @@
-# AgileFlow: Testing Guide and Scenario Catalogue
+# Testing guide and scenario catalogue
 
-## 1. Baseline (measured, Phase 0)
+## 1. Results (measured on Python 3.14.7, Windows)
 
-| Item | Result |
-|---|---|
-| Python | 3.14.7 (Windows, fresh `.venv`) |
-| Command | `python -m pytest -q -p no:cacheprovider -W default` |
-| Result | **2 passed** in about 6 s |
-| Warnings | `datetime.utcnow()` is deprecated (3 occurrences; fixed in Phase 1) |
-| Dependency gotcha | With the old unpinned `requirements.txt`, pip installed SQLAlchemy 2.1.9, and **every import failed** (`ImportError: ... PyInit__collections_cy`). Pinning `SQLAlchemy==2.0.58` fixed it. |
-| Isolation bug | The tests wrote to the real `instance/agile_manager.db` (the file appeared after the run, with the 2 test users). See section 5. |
+| Check | Command | Result |
+|---|---|---|
+| Automated suite | `python -m pytest` | **207 passed** in about 13 s |
+| Coverage | `python -m pytest --cov=agileflow` | **99 %** (gate in CI: 85 %) |
+| Live HTTP smoke (real server + real worker thread) | `python scripts/live_smoke.py` | all checks pass (2 scenarios) |
+| Real-browser UI smoke (headless Edge/Chrome) | `node scripts/ui_smoke/run.mjs` | **47 checks pass**, zero console/CSP errors |
+| Lint | `ruff check .` | CI. (The ruff binary is blocked on the author's managed laptop, so pyflakes was used locally; the code has no unused imports/variables.) |
 
-### What the 2 existing tests do (`tests/test_workflow.py`)
-
-1. `test_project_story_task_roles_and_report`: registers a Team Lead and a Member, Lead creates a project and adds the Member, Member creates a story and a task assigned to themselves (hard-coded `assigned_to_id: 2`), then generates a report and polls until `Completed` and checks the project name is in the result.
-2. `test_viewer_cannot_create_story`: a Viewer who was added to a project gets `403` when creating a story.
+Before this work the repository had **2 tests**, which wrote to the real development database (see PROJECT_WALKTHROUGH, issue 1).
 
 ## 2. How to run
 
 ```cmd
+:: one-time setup (Windows; see docs/RUN_GUIDE.md for every step)
 py -3.14 -m venv .venv
 .venv\Scripts\activate
-python -m pip install -r requirements.txt
-python -m pytest -q
+python -m pip install -r requirements-dev.txt
+
+python -m pytest                          :: everything
+python -m pytest tests/unit               :: one folder
+python -m pytest -k "job"                 :: by keyword
+python -m pytest tests/api/test_organize.py::test_org_01_move_task_to_another_story_same_project
+python -m pytest --cov=agileflow --cov-report=term-missing
 ```
 
-Useful variants (available once the later phases land):
+Smoke scripts (start their own server on spare ports with a throwaway database; nothing in `instance/` is touched):
 
-| Goal | Command |
-|---|---|
-| One scenario family | `python -m pytest -q -k "JOB"` |
-| Coverage gate (Phase 7) | `python -m pytest --cov=agileflow --cov-fail-under=85` |
-| Lint (Phase 1+) | `ruff check .` |
-| UI smoke (Phase 5+) | `python -m pytest tests/e2e -q` |
+```cmd
+python scripts\live_smoke.py
+node scripts\ui_smoke\run.mjs            :: needs Node 22+ and Edge or Chrome (set BROWSER=... if not found)
+```
 
-## 3. Test types and where they live (target layout)
+## 3. Test types
 
 | Layer | Folder | What it proves | Speed |
 |---|---|---|---|
-| Unit | `tests/unit/` | One business rule in a service or policy, without HTTP (e.g. "a Viewer may not create a story") | very fast |
-| API | `tests/api/` | Every route: status code, JSON shape, auth, validation | fast |
-| Worker | `tests/workers/` | Job queue states, retry/backoff, email backends, stale-lock recovery | fast, no real sleeping (time is injected) |
-| E2E | `tests/e2e/` | A real browser clicks through the main flow | slow, runs in CI |
+| Unit | `tests/unit/` | One rule without HTTP or a database: permission matrix, input validators, rate limiter, config, ordering | instant |
+| API | `tests/api/` | Every route: status code, JSON shape, auth, validation, isolation between users | fast |
+| Worker | `tests/workers/` | Queue states, retries, backoff, stale recovery, email backends, the real worker thread | fast (no sleeping; time is injected) |
+| Workflow | `tests/test_workflow.py` | The whole product story in one test | fast |
+| UI (server side) | `tests/e2e/` | Pages render, assets load, templates are CSP-clean, JS has no `innerHTML`, every module imports, JS syntax valid | fast |
+| Live smoke | `scripts/live_smoke.py` | Real server, real thread, real HTTP, CSRF on, failing SMTP | ~30 s |
+| Browser smoke | `scripts/ui_smoke/` | Real UI clicked through in a real browser | ~60 s |
 
-Rules for all tests: each test builds its own app via `create_app("testing")` with a throwaway database; no test may touch `instance/`; the email backend is the in-memory one; the background worker thread is off and tests call `run_pending()` themselves.
+Rules every test follows: it builds its own app with `create_app("testing")` (isolated in-memory SQLite); the background thread is off and tests call `run_pending()` themselves; email goes to an in-memory backend; nothing touches `instance/`.
 
-## 4. Scenario catalogue
+## 4. Scenario catalogue (48 scenarios, all covered)
 
-**Status key:** `covered` = an existing test exercises it now (partly or fully); otherwise the phase that will add the test.
+Test names are in the files shown (search for the ID, e.g. `test_org_01`).
 
-### Authentication
-| ID | Scenario | Expected | Status |
-|---|---|---|---|
-| AUTH-01 | Register with valid data | 201, session set | covered (indirectly) |
-| AUTH-02 | Register with a duplicate email | 409 | Phase 2 |
-| AUTH-03 | Password under 8 chars, or malformed email | 400 | Phase 2 |
-| AUTH-04 | Login ok / wrong password / unknown email | 200 / 401 / 401 with the same message | Phase 2 |
-| AUTH-05 | Protected API without login | 401 JSON | Phase 2 |
-| AUTH-06 | Logout, then call an API | 401 | Phase 2 |
+### Authentication, `tests/api/test_auth.py`
+| ID | Scenario | Expected |
+|---|---|---|
+| AUTH-01 | Register with valid data | 201, logged in |
+| AUTH-02 | Duplicate email (any letter case) | 409 |
+| AUTH-03 | Short password, bad email, blank/non-text name, bad role, over-long name; body not JSON | 400 |
+| AUTH-04 | Login ok / wrong password / unknown email | 200 / 401 / 401 with the **same** message |
+| AUTH-05 | Protected API without login; page without login | 401 JSON; redirect to /login |
+| AUTH-06 | Logout, then call an API | 401 |
+| (extra) | First user becomes Team Lead when role choice is off; deleted user's old cookie is rejected | |
 
-### Projects and members
-| ID | Scenario | Expected | Status |
-|---|---|---|---|
-| PRJ-01 | Team Lead creates a project | 201 | covered |
-| PRJ-02 | Member or Viewer creates a project | 403 | Phase 2 |
-| PRJ-03 | Blank name, bad status, non-string name | 400 (never 500) | Phase 2 |
-| PRJ-04 | Project list shows only own or member projects | isolation | Phase 2 |
-| PRJ-05 | A non-member reads or edits a project | 404 | Phase 2 |
-| PRJ-06 | Delete project cascades to stories, tasks, members | rows gone | Phase 2 |
-| MEM-01 | Add by email as Member or Viewer | 201 | covered |
-| MEM-02 | Unknown email / the owner / invalid role | 404 / 400 / 400 | Phase 2 |
-| MEM-03 | Re-adding changes the role | 200 | Phase 2 |
-| MEM-04 | Remove a member; their tasks become unassigned | 200 | Phase 2 |
+### Projects and members, `test_projects.py`, `test_members.py`
+| ID | Scenario | Expected |
+|---|---|---|
+| PRJ-01 | Team Lead creates a project | 201 |
+| PRJ-02 | Member or Viewer creates a project | 403 |
+| PRJ-03 | Blank/non-text name, bad status, bad/impossible/hostile deadline, over-long fields (POST and PATCH) | 400, never 500 |
+| PRJ-04 | List shows only own or member projects; counts, search, paging | isolation |
+| PRJ-05 | Non-member reads, edits, deletes, adds stories | 404 (same as a missing id) |
+| PRJ-06 | Delete project cascades to stories, tasks, members | rows gone |
+| MEM-01 | Add by email as Member or Viewer (case-insensitive) | 201 |
+| MEM-02 | Unknown email / the owner / invalid role / bad email; non-lead tries | 404 / 400 / 400 / 403 |
+| MEM-03 | Re-adding changes the role | 200 (not 201) |
+| MEM-04 | Remove a member; their tasks become unassigned; they lose access | 200 |
 
-### Stories and tasks
-| ID | Scenario | Expected | Status |
-|---|---|---|---|
-| STY-01 | Lead and Member create a story | 201 | covered (Member) |
-| STY-02 | Viewer creates or updates a story | 403 | covered (create) |
-| STY-03 | Invalid priority or status | 400 | Phase 2 |
-| STY-04 | Only the Team Lead can delete a story; cascades to tasks | 200 / 403 | Phase 2 |
-| TSK-01 | Create a task with a valid assignee | 201 | covered |
-| TSK-02 | Assignee outside the project | 400 | Phase 2 |
-| TSK-03 | Bad due-date format | 400 | Phase 2 |
-| TSK-04 | Status goes To Do, In Progress, Done and persists | 200 | Phase 2 |
-| TSK-05 | Reassign and unassign | 200 | Phase 2 |
+### Stories and tasks, `test_stories.py`, `test_tasks.py`
+| ID | Scenario | Expected |
+|---|---|---|
+| STY-01 | Lead and Member create; positions are 0,1,2 | 201 |
+| STY-02 | Viewer creates or updates | 403 (can still read) |
+| STY-03 | Invalid priority/status/title (POST and PATCH) | 400 |
+| STY-04 | Only the Lead deletes; cascades to tasks; others renumbered | 200 / 403 |
+| TSK-01 | Create with a valid assignee, due date | 201 |
+| TSK-02 | Assignee outside the project / unknown / non-numeric | 400 |
+| TSK-03 | Bad due-date formats (`01-06-2030`, `20300601`, ...) | 400 |
+| TSK-04 | Status To Do, In Progress, Done persists | 200 |
+| TSK-05 | Reassign, unassign | 200 |
 
-### Organise (Kanban, filters, reorder)
-| ID | Scenario | Expected | Status |
-|---|---|---|---|
-| ORG-01 | Move a task to another story in the same project | 200 | Phase 4 |
-| ORG-02 | Move a task across projects | 400 | Phase 4 |
-| ORG-03 | Reorder stories and tasks | positions updated | Phase 4 |
-| ORG-04 | Filter by status, priority, assignee, and text `q` | correct subset | Phase 4 |
-| ORG-05 | Board endpoint groups tasks by status | 3 columns | Phase 4 |
+### Organise, `test_organize.py`
+| ID | Scenario | Expected |
+|---|---|---|
+| ORG-01 | Move a task to another story of the same project; both stories renumbered | 200 |
+| ORG-02 | Move across projects (or to a missing story) | 400, task unchanged |
+| ORG-03 | Reorder tasks and stories; past-the-end clamps | positions updated |
+| ORG-04 | Filter stories by status, priority, assignee, text; combinations; paging; wildcard characters are literal; bad values | correct subset / 400 |
+| ORG-05 | Board groups tasks into To Do / In Progress / Done (+ filters) | 3 columns |
 
-### Async jobs and email
-| ID | Scenario | Expected | Status |
-|---|---|---|---|
-| JOB-01 | Report goes Queued, Running, Completed | result contains counts | covered |
-| JOB-02 | Handler fails once | retried, then Completed, attempts = 2 | Phase 3 |
-| JOB-03 | Handler always fails | Failed, `last_error` set | Phase 3 |
-| JOB-04 | Backoff grows between attempts | `next_run_at` increases | Phase 3 |
-| JOB-05 | Stale Running job at startup | re-queued | Phase 3 |
-| JOB-06 | Read another user's job | 404 | Phase 3 |
-| JOB-07 | Retry a failed job | new attempt | Phase 3 |
-| EML-01 | Assigning a task enqueues one email | 1 `send_email` job | Phase 3 |
-| EML-02 | SMTP failure | retried, then Failed | Phase 3 |
-| EML-03 | Console and memory backends | message captured | Phase 3 |
+### Async jobs and email, `test_job_queue.py`, `test_jobs_api.py`, `test_email_and_notifications.py`
+| ID | Scenario | Expected |
+|---|---|---|
+| JOB-01 | Report Queued, then Completed; content correct; scoped to your projects; "ready" email queued | counts, overdue |
+| JOB-02 | Handler fails once | retried, Completed, attempts = 2 |
+| JOB-03 | Handler always fails | Failed, attempts = 3, error stored |
+| JOB-04 | Backoff grows | `next_run_at` +2 s then +4 s; not claimable early |
+| JOB-05 | Worker died (stale Running) | re-queued; healthy jobs untouched |
+| JOB-06 | Another user's job | 404 |
+| JOB-07 | Retry a failed job; only Failed can be retried | attempts reset / 409 |
+| (extra) | Claim is exclusive; future jobs wait; oldest first; unknown job type fails cleanly; long errors truncated; hook failure does not undo a job; **the real worker thread processes a job** | |
+| EML-01 | Assign a task to someone else: exactly one email; none for self/nobody; reassign only when it changes; adding a member emails them once | queued, then delivered |
+| EML-02 | SMTP down: retries, ends Failed, error visible to the person who triggered it, retry after the server returns | |
+| EML-03 | Console, memory and SMTP backends; unknown backend rejected | |
 
-### Security and system
-| ID | Scenario | Expected | Status |
-|---|---|---|---|
-| SEC-01 | State-changing request without CSRF token | 403 | Phase 6 |
-| SEC-02 | 6th login attempt within a minute | 429 | Phase 6 |
-| SEC-03 | `<script>` in names, deadline, titles | rendered inert | Phase 2 and 5 |
-| SEC-04 | Security headers present (CSP etc.) | headers set | Phase 6 |
-| SYS-01 | A test run leaves the dev DB untouched | file unchanged | Phase 1 |
-| SYS-02 | `/api/health` | 200 | Phase 1 |
-| SYS-03 | `requires-python` and CI both say 3.14 | enforced | Phase 1 and 7 |
-| E2E-01 | Register, project, story, task, drag card, toast shown | passes | Phase 5 |
+### Security and system, `test_security.py`, `test_system.py`, `tests/e2e/`
+| ID | Scenario | Expected |
+|---|---|---|
+| SEC-01 | POST without / with wrong / old CSRF token; token rotates; GET unaffected | 403 / 403 / 403 / 2xx |
+| SEC-02 | 6th failed login in a minute; per-account; success resets; registration throttled | 429 |
+| SEC-03 | `<script>` / `<img onerror>` in names, titles, deadline; page escapes user name; JS never uses `innerHTML` | stored as text, rendered inert |
+| SEC-04 | CSP, nosniff, frame deny, referrer, no-store; HSTS only on https; cookie flags; JSON 404/405/500 | headers present |
+| SYS-01 | A test run leaves the dev database untouched; each app gets its own empty DB | file unchanged |
+| SYS-02 | `/api/health` | 200 |
+| SYS-03 | Python 3.14 enforced in pyproject, `.python-version`, Dockerfile, CI, and the tests themselves | enforced |
+| (extra) | SQLite foreign keys are ON; **migrations produce exactly the model schema**; migrating does not disable logging | |
+| E2E-01 | Register, project, story, task, drag a card, toast | `tests/e2e/` (server side) + `scripts/ui_smoke` (real browser) |
 
-**Coverage today:** 7 of 48 scenarios have a test. The other 41 are assigned to phases above.
+## 5. Manual test script (5 minutes)
 
-## 5. Manual test script (5 minutes, works today)
+Run `python wsgi.py` and use two browser windows (one private).
 
-Use two browser windows (one normal, one private).
+1. Window A: **Create an account**, role **Team Lead**. Window B: register `member@example.com` as **Team Member**.
+2. A: **+ New** project "Demo". **Team** tab, **+ Add teammate**, `member@example.com`. Toast: "Teammate added". *(Terminal shows the console email.)*
+3. B: reload, open "Demo". **Stories** tab, **+ New user story**, then **+ Add task** (assign to yourself).
+4. A: **Stories**, **+ Add task**, **assign to the member**. Terminal prints "New task" email.
+5. B: **Board** tab, **drag** a card from To Do to In Progress. Toast "Moved to In Progress". Use the card's select to move it to Done. Progress bar changes.
+6. Type in the search box: the board filters. **Clear** restores it. Try the priority and assignee filters.
+7. **Stories** tab: **Edit** a story and a task (change title, due date, assignee, or move the task to another story). Use the up/down arrows to reorder.
+8. Register a **Viewer**, add them to the project: no add/edit/delete buttons, status selects are disabled.
+9. **Reports & jobs** (sidebar): **Generate progress report**. The row goes Queued, Running, Completed; click **Download**.
+10. Failure demo: stop the server, set `MAIL_BACKEND=smtp` and `SMTP_HOST=127.0.0.1` `SMTP_PORT=1`, restart, add a teammate. In **Reports & jobs** the email job retries, then shows **Failed** with the error and a **Retry** button.
+11. As a user outside the project, call `PATCH /api/projects/1`: **404** (not 403).
+12. Try `<script>alert(1)</script>` as a project name: it is shown as text.
 
-1. Window A: open http://127.0.0.1:5000, **Create one**, register `lead@example.com`, role **Team Lead**.
-2. Window B: register `member@example.com`, role **Member**.
-3. Window A: **New project**, then open it, then **Add teammate** with `member@example.com`.
-4. Window B: refresh, so the project appears. Add a story, then a task assigned to yourself.
-5. Change the task status to **Done**. The progress bar on the project card should move.
-6. Window A: **Generate report**. Expect a toast, a short wait, then a `.txt` download.
-7. Register a third user as **Viewer**, have the Lead add them as Viewer. Confirm the status dropdowns are disabled and "Add story" is missing.
-8. As a user who is not in the project, send `PATCH /api/projects/1` (for example from the browser console with `fetch`). Today you get **403**; after Phase 2 you get **404**, so project IDs are not leaked.
+## 6. What is *not* automated
 
-## 6. Known test-suite problems (fixed in later phases)
-
-- **DB isolation (Phase 1):** `conftest`/`test_workflow.py` set `SQLALCHEMY_DATABASE_URI` after `SQLAlchemy(app)` was built, so the setting is ignored and `drop_all()` hits `instance/agile_manager.db`. If you have real data in that file, back it up before running the suite.
-- **Hard-coded id:** `assigned_to_id: 2` assumes row order; later tests read the id from the API response.
-- **Real sleeping:** the report test polls up to 3 s. Phase 3 replaces this with direct `run_pending()` calls.
-- **No failure-path test** for the background job, and no negative tests (400/403/404/409) apart from one 403.
+- Visual layout and responsiveness (checked by eye).
+- Real SMTP delivery (needs credentials; the protocol steps are tested with a fake SMTP server).
+- Touch-screen drag and drop (the select fallback is tested instead).
+- Load/concurrency beyond the worker-claim logic.
+- The Docker image build (no Docker on the author's machine; CI builds it).

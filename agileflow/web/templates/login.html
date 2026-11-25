@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}{{ "Create account" if mode == "register" else "Sign in" }} · AgileFlow{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+{% block body %}
+<main class="auth-card">
+  <h1 class="brand">AgileFlow</h1>
+  <p class="muted">Small-team agile project management</p>
+
+  <form id="authForm" data-mode="{{ mode }}" novalidate>
+    <h2>{{ "Create your account" if mode == "register" else "Sign in" }}</h2>
+
+    {% if mode == "register" %}
+    <label>Name
+      <input name="name" autocomplete="name" maxlength="80" required>
+    </label>
+    {% endif %}
+
+    <label>Email
+      <input name="email" type="email" autocomplete="email" maxlength="160" required>
+    </label>
+
+    <label>Password
+      <input name="password" type="password" minlength="8" maxlength="128"
+             autocomplete="{{ 'new-password' if mode == 'register' else 'current-password' }}" required>
+    </label>
+
+    {% if mode == "register" and allow_role_select %}
+    <label>Role
+      <select name="role">
+        <option value="Team Lead">Team Lead (creates projects)</option>
+        <option value="Member" selected>Team Member</option>
+        <option value="Viewer">Viewer (read only)</option>
+      </select>
+    </label>
+    {% elif mode == "register" %}
+    <p class="muted small">The first account becomes Team Lead; everyone else joins as a Member.</p>
+    {% endif %}
+
+    <p id="authError" class="form-error" role="alert" hidden></p>
+    <button type="submit" class="btn primary block">{{ "Create account" if mode == "register" else "Sign in" }}</button>
+  </form>
+
+  <p class="muted center">
+    {% if mode == "register" %}Already registered? <a href="{{ url_for('web.login_page') }}">Sign in</a>
+    {% else %}New here? <a href="{{ url_for('web.register_page') }}">Create an account</a>{% endif %}
+  </p>
+</main>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/auth.js') }}"></script>
+{% endblock %}

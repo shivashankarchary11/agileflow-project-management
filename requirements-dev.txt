@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# Test and lint tools
+pytest==8.3.5
+pytest-cov==7.1.0
+ruff==0.17.6

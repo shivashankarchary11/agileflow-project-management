@@ -11,3 +11,6 @@ instance/
 .pytest_cache/
 .coverage
 htmlcov/
+*.db-wal
+*.db-shm
+*.db-journal

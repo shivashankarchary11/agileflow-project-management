@@ -1,90 +1,48 @@
-import time
-import pytest
-from app import app, db
+"""The whole product story in one test: the flow a team actually follows."""
+
+from tests.helpers import PASSWORD
 
 
-_test_database_configured = False
+def test_full_team_workflow(app, run_jobs):
+    lead, member = app.test_client(), app.test_client()
 
+    # 1. People sign up
+    assert lead.post("/auth/register", json={"name": "Lead User", "email": "lead@example.com", "password": PASSWORD, "role": "Team Lead"}).status_code == 201
+    assert member.post("/auth/register", json={"name": "Member User", "email": "member@example.com", "password": PASSWORD, "role": "Member"}).status_code == 201
+    member_id = member.get("/api/me").get_json()["id"]
 
-@pytest.fixture()
-def client(tmp_path_factory):
-    global _test_database_configured
-    if not _test_database_configured:
-        db_path = tmp_path_factory.getbasetemp() / "test_agileflow.db"
-        app.config.update(
-            TESTING=True,
-            SECRET_KEY="test-secret-key",
-            SQLALCHEMY_DATABASE_URI=f"sqlite:///{db_path.as_posix()}",
-        )
-        _test_database_configured = True
-    with app.app_context():
-        db.session.remove()
-        db.drop_all()
-        db.create_all()
-    with app.test_client() as test_client:
-        yield test_client
-    with app.app_context():
-        db.session.remove()
+    # 2. The lead creates a project and invites the member
+    project = lead.post("/api/projects", json={"name": "Demo Project", "deadline": "2030-12-31"}).get_json()
+    pid = project["id"]
+    assert lead.post(f"/api/projects/{pid}/members", json={"email": "member@example.com", "role": "Member"}).status_code == 201
 
+    # 3. The member plans work: Project -> Story -> Tasks
+    story = member.post(f"/api/projects/{pid}/stories", json={"title": "Sign-in", "priority": "High"}).get_json()
+    first = member.post(f"/api/stories/{story['id']}/tasks", json={"title": "Login form", "assigned_to_id": member_id}).get_json()
+    second = member.post(f"/api/stories/{story['id']}/tasks", json={"title": "Password reset"}).get_json()
 
-def register(client, name, email, role="Member"):
-    return client.post("/auth/register", json={
-        "name": name, "email": email, "password": "password-123", "role": role
-    })
+    # 4. Work moves across the board
+    assert member.patch(f"/api/tasks/{first['id']}/move", json={"status": "In Progress"}).status_code == 200
+    assert member.patch(f"/api/tasks/{first['id']}", json={"status": "Done"}).status_code == 200
+    board = lead.get(f"/api/projects/{pid}/board").get_json()
+    assert [t["title"] for t in board["columns"]["Done"]] == ["Login form"]
+    assert [t["title"] for t in board["columns"]["To Do"]] == ["Password reset"]
 
+    # 5. The lead assigns the other task: an email is queued and delivered in the background
+    lead.patch(f"/api/tasks/{second['id']}", json={"assigned_to_id": member_id})
+    run_jobs()
+    mails = [m for m in app.extensions["mail_backend"].sent if "Password reset" in m.subject]
+    assert [m.to for m in mails] == ["member@example.com"]
 
-def test_project_story_task_roles_and_report(client):
-    # The user explicitly chooses the Team Lead role during registration.
-    response = register(client, "Lead User", "lead@example.com", "Team Lead")
-    assert response.status_code == 201
-    assert response.get_json()["role"] == "Team Lead"
+    # 6. A report is generated asynchronously
+    job = member.post("/api/reports").get_json()
+    assert job["status"] == "Queued"
+    run_jobs()
+    finished = member.get(f"/api/jobs/{job['job_id']}").get_json()
+    assert finished["status"] == "Completed"
+    assert "Demo Project" in finished["result"] and "Overall completion: 50.0%" in finished["result"]
 
-    created = client.post("/api/projects", json={"name": "Demo Project"})
-    assert created.status_code == 201
-    project_id = created.get_json()["id"]
-
-    client.post("/auth/logout")
-    member_register = register(client, "Member User", "member@example.com")
-    assert member_register.status_code == 201
-    client.post("/auth/logout")
-
-    # Sign back in as lead and add the registered member.
-    login = client.post("/auth/login", json={"email": "lead@example.com", "password": "password-123"})
-    assert login.status_code == 200
-    added = client.post(f"/api/projects/{project_id}/members", json={"email": "member@example.com", "role": "Member"})
-    assert added.status_code == 201
-
-    client.post("/auth/logout")
-    client.post("/auth/login", json={"email": "member@example.com", "password": "password-123"})
-    story = client.post(f"/api/projects/{project_id}/stories", json={"title": "Build sign-in"})
-    assert story.status_code == 201
-    story_id = story.get_json()["id"]
-    task = client.post(f"/api/stories/{story_id}/tasks", json={"title": "Create login form", "assigned_to_id": 2})
-    assert task.status_code == 201
-    assert task.get_json()["assigned_to"] == "Member User"
-
-    # Member can generate a report, but only for projects they can access.
-    job_response = client.post("/api/reports")
-    assert job_response.status_code == 202
-    job_id = job_response.get_json()["job_id"]
-    for _ in range(30):
-        job = client.get(f"/api/jobs/{job_id}").get_json()
-        if job["status"] in ("Completed", "Failed"):
-            break
-        time.sleep(0.1)
-    assert job["status"] == "Completed"
-    assert "Demo Project" in job["result"]
-
-
-def test_viewer_cannot_create_story(client):
-    register(client, "Lead User", "lead@example.com", "Team Lead")
-    project = client.post("/api/projects", json={"name": "Read Only"}).get_json()
-    client.post("/auth/logout")
-    register(client, "Viewer User", "viewer@example.com", "Viewer")
-    client.post("/auth/logout")
-    client.post("/auth/login", json={"email": "lead@example.com", "password": "password-123"})
-    client.post(f"/api/projects/{project['id']}/members", json={"email": "viewer@example.com", "role": "Viewer"})
-    client.post("/auth/logout")
-    client.post("/auth/login", json={"email": "viewer@example.com", "password": "password-123"})
-    denied = client.post(f"/api/projects/{project['id']}/stories", json={"title": "Should be blocked"})
-    assert denied.status_code == 403
+    # 7. The nested view shows the whole hierarchy
+    detail = lead.get(f"/api/projects/{pid}").get_json()
+    assert (detail["story_count"], detail["task_count"], detail["done_count"]) == (1, 2, 1)
+    assert [t["title"] for t in detail["stories"][0]["tasks"]] == ["Login form", "Password reset"]

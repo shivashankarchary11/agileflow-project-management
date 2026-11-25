@@ -1,0 +1,17 @@
+# Local demo:  SECRET_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(48))") docker compose up --build
+services:
+  web:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY (a long random string)}
+      COOKIE_SECURE: "0"            # plain http on localhost; set to 1 behind HTTPS
+      ALLOW_SELF_SELECT_ROLE: "1"   # demo: let people pick Team Lead/Member/Viewer
+      MAIL_BACKEND: ${MAIL_BACKEND:-console}
+    volumes:
+      - agileflow-data:/app/instance
+
+volumes:
+  agileflow-data:

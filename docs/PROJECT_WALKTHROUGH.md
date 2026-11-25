@@ -3,6 +3,8 @@
 > Audience: team members new to the project. Read top to bottom in about 15 minutes.
 > Diagrams are Mermaid; GitHub renders them automatically.
 > This describes the code **as delivered in commit `ccf8e97`** (before the refactor phases in [PHASES.md](PHASES.md)).
+>
+> **Status: historical.** Every issue in section 8 has since been fixed (see [PHASES.md](PHASES.md)), the single `app.py` was split into the `agileflow/` package, and the file tour in section 6 no longer matches the folders. For the **current** design read [architecture.md](architecture.md); keep this page to explain *where the project started* and why the refactor happened.
 
 ---
 

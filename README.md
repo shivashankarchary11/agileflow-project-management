@@ -1,122 +1,128 @@
-# AgileFlow — Small-Team Agile Project Management
+# AgileFlow: small-team Agile project management
 
-AgileFlow is a full-stack web application for a small team (3–10 people). It models work hierarchically as **Project → User Story → Task**, supports project membership and role-based permissions, persists data in SQLite, and generates progress reports in the background.
+A full-stack web app for a team of 3-10 people. Work is organised as **Project -> User Story -> Task**. People sign up, a Team Lead creates a project and invites teammates, the team plans stories and tasks, moves them across a Kanban board, and gets email notifications and progress reports produced by a background worker.
+
+**Runs on Python 3.14 only.** Flask, SQLAlchemy, SQLite, vanilla JavaScript. 207 automated tests (99 % coverage) plus real-server and real-browser smoke tests.
+
+| I want to... | Go to |
+|---|---|
+| **Run it from scratch, step by step** | [docs/RUN_GUIDE.md](docs/RUN_GUIDE.md) |
+| Understand what Varsha originally built (with diagrams) | [docs/PROJECT_WALKTHROUGH.md](docs/PROJECT_WALKTHROUGH.md) |
+| See the current architecture and async design | [docs/architecture.md](docs/architecture.md) |
+| Call the API | [docs/api-documentation.md](docs/api-documentation.md) |
+| Read the database schema | [docs/database-schema.md](docs/database-schema.md) |
+| Read design decisions and tradeoffs | [docs/design-decisions.md](docs/design-decisions.md) |
+| Read the security notes | [docs/SECURITY.md](docs/SECURITY.md) |
+| See the test scenarios and how to run tests | [docs/TESTING.md](docs/TESTING.md) |
+| See what each delivery phase did (beginner to advanced) | [docs/PHASES.md](docs/PHASES.md) |
 
 ## Features
 
-- Account registration and login with Werkzeug password hashing.
-- During registration, users choose Team Lead, Team Member, or Viewer. For this assignment demo, role selection is open; in production, Team Lead privileges should be granted through an administrator-controlled invitation or approval process.
-- Team Leads create projects and invite existing users by email as Members or Viewers.
-- Project members see only projects they own or have been added to.
-- Team Leads and Members create stories and tasks, update statuses, and assign tasks to project members.
-- Viewers have read-only project access.
-- Project dashboard with project, story, task and completion summaries.
-- Asynchronous progress report generation, persisted job state, status polling and one retry after a processing failure.
-- JSON REST API documented in `docs/api-documentation.md`.
+- **Hierarchy:** projects contain user stories, stories contain tasks (title, description, status, due date, assignee).
+- **Roles:** Team Lead (project owner), Member (edits), Viewer (read-only), enforced on the server for every request.
+- **Organise:** Kanban board with drag-and-drop (and a keyboard-friendly "move to" select), reorder stories and tasks, move a task to another story, filter by status/priority/assignee, text search, paging.
+- **Edit everything from the UI:** projects, stories, tasks (including assignee and due date), team members.
+- **Notifications:** toast messages for every success or failure.
+- **Email:** sent in the background when a task is assigned, someone is added to a project, or a report is ready. Console (default) or real SMTP.
+- **Async workflow:** progress reports and emails run through a database-backed job queue with retries, exponential backoff, restart recovery, a Jobs panel and a manual Retry.
+- **Security:** CSRF tokens, login throttling, strict CSP, scrypt passwords, XSS-safe UI, 404 for other people's projects. See [SECURITY.md](docs/SECURITY.md).
 
-## Technology
-
-| Layer | Technology |
-|---|---|
-| Frontend | HTML, CSS, vanilla JavaScript |
-| Backend | Python 3, Flask |
-| API | Flask JSON REST endpoints |
-| ORM / persistence | Flask-SQLAlchemy, SQLite |
-| Password storage | Werkzeug password hashing (scrypt by default in Werkzeug 3) |
-| Async workflow | Background Python thread + persisted `background_job` record |
-
-## Run locally (Windows)
-
-1. Install Python 3.14 (the project is being standardised on 3.14; see [docs/PHASES.md](docs/PHASES.md)).
-2. Clone the repo and open its root folder in VS Code.
-3. Open a terminal there. Confirm `dir` shows `app.py` and `requirements.txt`.
-4. Create a virtual environment:
-
-   ```cmd
-   py -3.14 -m venv .venv
-   .venv\Scripts\activate
-   ```
-
-5. Install dependencies:
-
-   ```cmd
-   python -m pip install -r requirements.txt
-   ```
-
-6. Set a local secret key (use a different random value for each deployment):
-
-   ```cmd
-   set SECRET_KEY=replace-this-with-a-long-random-secret
-   ```
-
-7. Start the server:
-
-   ```cmd
-   python app.py
-   ```
-
-8. Visit `http://127.0.0.1:5000` and choose **Create one** to register.
-
-Choose the Team Lead role when registering the account that will create projects. Register additional users as Team Members or Viewers. The Team Lead can add them to a project from the project details panel.
-
-The SQLite database is created automatically at `instance/agile_manager.db` on first run. Back up this file if you need to preserve local project data.
-
-## Typical workflow
-
-1. Register an account and explicitly select **Team Lead** as its role.
-2. Register each teammate with their own email address.
-3. Sign in as Team Lead, create a project, then choose **Add teammate** and enter a teammate's registered email.
-4. A Team Lead or Member creates a User Story inside the project.
-5. Add one or more Tasks under the story and select a project teammate as the assignee.
-6. Update story/task status as work progresses. Viewers can follow progress but cannot edit.
-7. Use the report action to generate a progress report asynchronously.
-
-## Project documentation
-
-- **New here? Start with the [Project walkthrough](docs/PROJECT_WALKTHROUGH.md)** (flow diagrams, data model, known issues)
-- [Testing guide and scenario catalogue](docs/TESTING.md)
-- [Delivery phases (beginner to advanced)](docs/PHASES.md)
-- [Architecture and async workflow](docs/architecture.md)
-- [API documentation](docs/api-documentation.md)
-- [Database schema](docs/database-schema.md)
-- [Design decisions, tradeoffs and security](docs/design-decisions.md)
-
-## Tests
-
-`pytest` is already in `requirements.txt`. Run the suite:
+## Quick start (Windows)
 
 ```cmd
-python -m pytest -q
+git clone https://github.com/shivashankarchary11/agileflow-project-management.git
+cd agileflow-project-management
+git checkout phase-1-to-7-implementation
+py -3.14 -m venv .venv
+.venv\Scripts\activate
+python -m pip install -r requirements-dev.txt
+python -m pytest          :: optional: expect 207 passed
+python wsgi.py            :: then open http://127.0.0.1:5000
 ```
 
-> Warning: until Phase 1 (app factory) lands, the tests write to the real `instance/agile_manager.db`. Back it up first if it holds data you care about. Details in [docs/TESTING.md](docs/TESTING.md).
+Linux/macOS: the same with `python3.14 -m venv .venv && source .venv/bin/activate`. Details, what to expect at each step, optional SMTP and Docker: [docs/RUN_GUIDE.md](docs/RUN_GUIDE.md).
 
-## Async workflow and limitations
+## Architecture in one picture
 
-`POST /api/reports` creates a `Queued` job record and starts a background thread. The worker changes the job to `Running`, computes a report for only the requesting user's accessible projects, stores the report and marks the job `Completed`. On an exception it rolls back and retries once; after the second failure it records `Failed` and the error. The frontend polls `GET /api/jobs/{job_id}`.
+```mermaid
+flowchart LR
+  B["Browser<br/>ES-module JS, toasts, Kanban"] -->|"JSON + cookie + CSRF"| API["api/ (blueprints, validation)"]
+  API --> SVC["services/ (rules, permissions)"]
+  SVC --> REPO["repositories/ (queries)"] --> DB[("SQLite")]
+  SVC -->|"enqueue after commit"| Q["background_job table"]
+  W["worker thread"] -->|"claim, run, retry with backoff"| Q
+  W --> H["handlers: report, email"] --> MAIL["console / SMTP"]
+```
 
-This in-process worker is intentionally simple for a small-team assignment. A process restart can interrupt an in-flight job, and multiple production workers would need coordination. A production deployment should use a durable queue such as Celery or RQ with Redis, bounded retries/backoff, idempotency and monitoring.
+Full description, sequence diagrams and the job state machine: [docs/architecture.md](docs/architecture.md).
 
-## Security notes
+## Project layout
 
-- Passwords are stored as hashes, never as plaintext.
-- Authentication uses Flask's signed session cookie with `HttpOnly` and `SameSite=Lax` settings.
-- API endpoints check authentication and project membership/role on the server; hiding a button in the frontend is not treated as authorization.
-- Users explicitly select their role during registration in this demo. For production, restrict Team Lead assignment to administrator approval or secure invitations.
-- Report jobs are scoped to the requesting user, and users cannot read another user's job by guessing its ID.
-- Task assignees must belong to the project (or be its Team Lead).
-- Input fields have basic required-value, length and enum validation; SQLAlchemy parameterizes database operations.
-- For production: use a strong environment-provided `SECRET_KEY`, HTTPS, secure cookies, CSRF protection for cookie-authenticated state-changing requests, login rate limiting, audit logs, database migrations, and disable Flask debug mode. Do not expose the development server directly to the internet.
+```
+agileflow/            the application package (api, services, repositories, models, domain, workers, web)
+migrations/           database migrations (Alembic)
+tests/                unit, api, workers, e2e + shared fixtures
+scripts/              live HTTP smoke test and real-browser UI smoke test
+docs/                 all documentation
+wsgi.py / app.py      entry points
+Dockerfile, docker-compose.yml, .github/workflows/ci.yml
+```
+
+## Configuration
+
+Environment variables (all optional in development; full list in [.env.example](.env.example)):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `APP_ENV` | `development` | `development`, `testing` or `production` |
+| `SECRET_KEY` | dev value | **Required** (>= 16 random chars) in production |
+| `DATABASE_URL` | `sqlite:///agileflow.db` | stored in `instance/` |
+| `MAIL_BACKEND` | `console` | `console` prints emails to the log; `smtp` sends (needs `SMTP_*`) |
+| `ALLOW_SELF_SELECT_ROLE` | on in dev, off in prod | off: first account is Team Lead, others Member |
+| `WORKER_ENABLED` | `1` | background worker thread |
+| `JOB_MAX_ATTEMPTS`, `JOB_BACKOFF_BASE_SECONDS` | `3`, `2` | retry policy: delay = base * 2^attempt |
+
+## Testing
+
+```cmd
+python -m pytest                        :: 207 tests, ~13 s, never touches your real database
+python -m pytest --cov=agileflow        :: 99 % coverage
+python scripts\live_smoke.py            :: real server + real worker over HTTP (incl. a broken mail server)
+node scripts\ui_smoke\run.mjs           :: real browser, 47 UI checks
+```
+
+The 48 scenarios (auth, permissions, hierarchy, organise, async retries, email, security) and the tests that cover them are listed in [docs/TESTING.md](docs/TESTING.md).
+
+## Async design (assignment requirement)
+
+`POST /api/reports` and every notification only **enqueue** a row in `background_job` and return at once. A worker thread claims due jobs atomically, runs the handler, and records the outcome.
+
+- **Failure:** the exception type and message are stored on the job and shown in the UI.
+- **Retry:** up to 3 attempts with exponential backoff (2 s, 4 s); then the job is `Failed` and the user can click **Retry**.
+- **Crash safety:** jobs are committed before work starts; a `Running` job whose worker died is re-queued after 5 minutes. Delivery is at-least-once.
+- **Tested:** success, fail-once-then-succeed, fail-always, backoff timing, stale recovery, exclusive claiming, a real worker thread, and an unreachable SMTP server.
+
+Tradeoff and upgrade path (Celery/RQ + Redis, PostgreSQL `SKIP LOCKED`): [docs/design-decisions.md](docs/design-decisions.md).
+
+## Design decisions, security, schema
+
+Short versions are in the docs above. Headlines: layered architecture with the rules in services; migrations instead of `create_all()`; 404 instead of 403 for hidden projects; strict validation that rejects instead of truncating; CSRF + CSP + throttling; at-least-once background jobs with visible failures.
 
 ## AI usage
 
-AI assistance was used for scaffolding, debugging support, code review suggestions and documentation drafting. The developer should run the application and tests, review the implementation, and be prepared to explain the data model, authorization checks, API routes, async worker and tradeoffs.
+AI assistance (Claude Code) was used to read and explain the inherited code, design the refactor, write the implementation, tests and documentation, and to run the verification below. It was **not** trusted blindly: every claim in these docs was checked by running something. Examples of what running things caught that reading did not: SQLAlchemy 2.1 cannot be imported on Python 3.14.7; the old tests wrote to the real database; Alembic silently disabled all logging; INFO logs were dropped so console emails never appeared; a UI view printed `[object HTMLElement]` instead of stories. Anyone on the team should still be able to explain the data model, the permission checks, the job queue and the tradeoffs; `docs/architecture.md` and `docs/design-decisions.md` are written for that.
 
-## What I would improve next
+## What I would build next
 
-- Replace the in-process thread with Celery/RQ and Redis for durable background jobs.
-- Add CSRF protection, rate limiting, audit logs, password reset and email invitations.
-- Add activity history, comments, labels, sprint planning, search and filtering.
-- Add pagination and more detailed reporting.
-- Add Alembic migrations, structured logging, CI, Docker and deployment configuration.
-- Consider PostgreSQL for higher concurrency and multi-instance deployments.
+- **PostgreSQL + a real queue (Celery/RQ with Redis)** for more users and multiple servers; handlers move over unchanged.
+- **Email invitations** for people who have not registered yet, email verification, password reset, optional MFA.
+- **Comments, attachments, sub-tasks, labels, sprints and burndown charts.**
+- **Real-time updates** (Server-Sent Events) so boards refresh when a teammate changes something.
+- **Audit log and notification preferences** (per-user opt-out, digest emails).
+- **Server-side sessions** so a stolen cookie can be revoked; shared rate-limit store.
+- **Browser tests in CI** (the smoke script needs a browser; add a Chrome step) and an OpenAPI/Swagger page generated from the schemas.
+- **Pagination of the project detail** for very large projects, and accessibility review with a screen reader.
+
+## Demo
+
+`demo_video.mp4` in this repository is the walkthrough recorded for the **original** version. A new walkthrough of this version can follow the 12-step manual script in [docs/TESTING.md](docs/TESTING.md).

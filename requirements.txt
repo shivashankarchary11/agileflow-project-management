@@ -1,4 +1,18 @@
+# Runtime dependencies, pinned and verified on Python 3.14.
+# (SQLAlchemy 2.1.x fails to import on Python 3.14.7, so it must stay on 2.0.x.)
 Flask==3.1.0
 Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.1.0
 SQLAlchemy==2.0.58
-pytest==8.3.5
+
+# Transitive dependencies, pinned for reproducible installs
+alembic==1.20.1
+blinker==1.9.0
+click==8.5.1
+colorama==0.4.6; sys_platform == "win32"
+itsdangerous==2.2.0
+Jinja2==3.1.6
+Mako==1.4.3
+MarkupSafe==3.0.4
+typing_extensions==4.16.0
+Werkzeug==3.1.9

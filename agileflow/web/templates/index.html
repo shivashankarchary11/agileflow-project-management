@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}AgileFlow{% endblock %}
+{% block body %}
+<header class="topbar">
+  <span class="brand">AgileFlow</span>
+  <div class="topbar-right">
+    <span class="user-chip" id="userChip" data-user-id="{{ user.id }}" data-role="{{ user.role }}">
+      {{ user.name }} · {{ user.role }}
+    </span>
+    <button id="logoutBtn" class="btn ghost" type="button">Log out</button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" aria-label="Projects">
+    <div class="sidebar-head">
+      <h2>Projects</h2>
+      <button id="newProjectBtn" class="btn primary small" type="button" hidden>+ New</button>
+    </div>
+    <input id="projectSearch" type="search" placeholder="Search projects" aria-label="Search projects" maxlength="100">
+    <ul id="projectList" class="project-list"></ul>
+    <button id="jobsNavBtn" class="btn ghost block" type="button">Reports &amp; jobs</button>
+  </aside>
+
+  <main id="main" tabindex="-1" aria-live="polite"></main>
+</div>
+
+<dialog id="formDialog" class="dialog" aria-labelledby="formDialogTitle"></dialog>
+{% endblock %}
+{% block scripts %}
+<script type="module" src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% endblock %}
