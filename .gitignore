@@ -4,3 +4,10 @@ __pycache__/
 instance/
 .env
 .vscode/
+
+# Phase 0 additions
+*.mp4
+*.db
+.pytest_cache/
+.coverage
+htmlcov/

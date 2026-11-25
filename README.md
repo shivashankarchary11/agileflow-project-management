@@ -22,18 +22,18 @@ AgileFlow is a full-stack web application for a small team (3–10 people). It m
 | Backend | Python 3, Flask |
 | API | Flask JSON REST endpoints |
 | ORM / persistence | Flask-SQLAlchemy, SQLite |
-| Password storage | Werkzeug PBKDF2 password hashing |
+| Password storage | Werkzeug password hashing (scrypt by default in Werkzeug 3) |
 | Async workflow | Background Python thread + persisted `background_job` record |
 
 ## Run locally (Windows)
 
-1. Install Python 3.10 or newer.
-2. Extract the ZIP and open the **inner `agile-project-manager` folder** in VS Code.
-3. Open a terminal in that folder. Confirm `dir` shows `app.py` and `requirements.txt`.
+1. Install Python 3.14 (the project is being standardised on 3.14; see [docs/PHASES.md](docs/PHASES.md)).
+2. Clone the repo and open its root folder in VS Code.
+3. Open a terminal there. Confirm `dir` shows `app.py` and `requirements.txt`.
 4. Create a virtual environment:
 
    ```cmd
-   py -m venv .venv
+   py -3.14 -m venv .venv
    .venv\Scripts\activate
    ```
 
@@ -73,6 +73,9 @@ The SQLite database is created automatically at `instance/agile_manager.db` on f
 
 ## Project documentation
 
+- **New here? Start with the [Project walkthrough](docs/PROJECT_WALKTHROUGH.md)** (flow diagrams, data model, known issues)
+- [Testing guide and scenario catalogue](docs/TESTING.md)
+- [Delivery phases (beginner to advanced)](docs/PHASES.md)
 - [Architecture and async workflow](docs/architecture.md)
 - [API documentation](docs/api-documentation.md)
 - [Database schema](docs/database-schema.md)
@@ -80,12 +83,13 @@ The SQLite database is created automatically at `instance/agile_manager.db` on f
 
 ## Tests
 
-Install the test dependency and run the test suite:
+`pytest` is already in `requirements.txt`. Run the suite:
 
 ```cmd
-python -m pip install pytest
-pytest -q
+python -m pytest -q
 ```
+
+> Warning: until Phase 1 (app factory) lands, the tests write to the real `instance/agile_manager.db`. Back it up first if it holds data you care about. Details in [docs/TESTING.md](docs/TESTING.md).
 
 ## Async workflow and limitations
 
